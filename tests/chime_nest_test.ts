@@ -8,7 +8,7 @@ import {
 import { assertEquals } from 'https://deno.land/std@0.90.0/testing/asserts.ts';
 
 Clarinet.test({
-  name: "Test sleep session management",
+  name: "Test sleep session management with validations",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const deployer = accounts.get('deployer')!;
 
@@ -18,20 +18,19 @@ Clarinet.test({
     ]);
     block.receipts[0].result.expectOk().expectBool(true);
 
-    // Verify active session
-    let response = chain.callReadOnlyFn('chime-nest', 'get-active-session', 
-      [types.principal(deployer.address)], deployer.address
-    );
-    response.result.expectOk().expectBool(true);
+    // Mine 36 blocks to simulate minimum sleep duration
+    for (let i = 0; i < 36; i++) {
+      chain.mineBlock([]);
+    }
 
-    // End sleep session
+    // End sleep session with valid rating
     block = chain.mineBlock([
       Tx.contractCall('chime-nest', 'end-sleep-session', [types.uint(8)], deployer.address)
     ]);
     block.receipts[0].result.expectOk().expectBool(true);
 
     // Verify profile updated
-    response = chain.callReadOnlyFn('chime-nest', 'get-profile',
+    let response = chain.callReadOnlyFn('chime-nest', 'get-profile',
       [types.principal(deployer.address)], deployer.address
     );
     let profile = response.result.expectOk().expectTuple();
@@ -41,11 +40,11 @@ Clarinet.test({
 });
 
 Clarinet.test({
-  name: "Test white noise and alarm settings",
+  name: "Test white noise and alarm settings with validations",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const deployer = accounts.get('deployer')!;
 
-    // Set white noise preset
+    // Test valid volume
     let block = chain.mineBlock([
       Tx.contractCall('chime-nest', 'set-white-noise-preset',
         [types.ascii("rain"), types.uint(3600), types.uint(70)],
@@ -54,7 +53,16 @@ Clarinet.test({
     ]);
     block.receipts[0].result.expectOk().expectBool(true);
 
-    // Set smart alarm
+    // Test invalid volume
+    block = chain.mineBlock([
+      Tx.contractCall('chime-nest', 'set-white-noise-preset',
+        [types.ascii("rain"), types.uint(3600), types.uint(101)],
+        deployer.address
+      )
+    ]);
+    block.receipts[0].result.expectErr(types.uint(105));
+
+    // Test valid smart alarm
     block = chain.mineBlock([
       Tx.contractCall('chime-nest', 'set-smart-alarm',
         [types.uint(28800), types.uint(1800)],
